@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2023 Algorand, Inc.
+// Copyright (C) 2019-2024 Algorand, Inc.
 // This file is part of go-algorand
 //
 // go-algorand is free software: you can redistribute it and/or modify
@@ -74,6 +74,7 @@ type PpConfig struct {
 	AppLocalKeys    uint32
 	Rekey           bool
 	MaxRuntime      time.Duration
+	AsyncSending    bool
 
 	// asset spam; make lots of NFT ASAs
 	NftAsaPerSecond       uint32 // e.g. 100

@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2023 Algorand, Inc.
+// Copyright (C) 2019-2024 Algorand, Inc.
 // This file is part of go-algorand
 //
 // go-algorand is free software: you can redistribute it and/or modify
@@ -18,6 +18,7 @@ package ledger
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -162,8 +163,10 @@ type lruKVTestLogger struct {
 	warnMsgCount  int
 }
 
-func (cl *lruKVTestLogger) Warnf(s string, args ...interface{}) {
-	cl.warnMsgCount++
+func (cl *lruKVTestLogger) Infof(s string, args ...interface{}) {
+	if strings.Contains(s, "exceed the warning threshold of") {
+		cl.warnMsgCount++
+	}
 }
 
 func TestLRUKVPendingWritesWarning(t *testing.T) {

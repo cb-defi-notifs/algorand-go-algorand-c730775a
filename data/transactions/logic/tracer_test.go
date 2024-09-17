@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2023 Algorand, Inc.
+// Copyright (C) 2019-2024 Algorand, Inc.
 // This file is part of go-algorand
 //
 // go-algorand is free software: you can redistribute it and/or modify
@@ -44,7 +44,7 @@ func getSimpleTracerTestCases(mode RunMode) []tracerTestCase {
 				},
 				mocktracer.OpcodeEvents(35, false),
 				{
-					mocktracer.AfterProgram(mode, false),
+					mocktracer.AfterProgram(mode, mocktracer.ProgramResultPass),
 				},
 			}),
 		},
@@ -58,7 +58,7 @@ func getSimpleTracerTestCases(mode RunMode) []tracerTestCase {
 				},
 				mocktracer.OpcodeEvents(36, false),
 				{
-					mocktracer.AfterProgram(mode, false),
+					mocktracer.AfterProgram(mode, mocktracer.ProgramResultReject),
 				},
 			}),
 		},
@@ -72,7 +72,7 @@ func getSimpleTracerTestCases(mode RunMode) []tracerTestCase {
 				},
 				mocktracer.OpcodeEvents(36, true),
 				{
-					mocktracer.AfterProgram(mode, true),
+					mocktracer.AfterProgram(mode, mocktracer.ProgramResultError),
 				},
 			}),
 		},
@@ -90,7 +90,7 @@ func getPanicTracerTestCase(mode RunMode) tracerTestCase {
 			},
 			mocktracer.OpcodeEvents(36, true),
 			{
-				mocktracer.AfterProgram(mode, true),
+				mocktracer.AfterProgram(mode, mocktracer.ProgramResultError),
 			},
 		}),
 	}
@@ -105,7 +105,7 @@ func TestLogicSigEvalWithTracer(t *testing.T) {
 		t.Run(testCase.name, func(t *testing.T) {
 			t.Parallel()
 			mock := mocktracer.Tracer{}
-			ep := DefaultEvalParams()
+			ep := DefaultSigParams()
 			ep.Tracer = &mock
 			TestLogic(t, testCase.program, AssemblerMaxVersion, ep, testCase.evalProblems...)
 
@@ -123,7 +123,7 @@ func TestTopLevelAppEvalWithTracer(t *testing.T) {
 		t.Run(testCase.name, func(t *testing.T) {
 			t.Parallel()
 			mock := mocktracer.Tracer{}
-			ep := DefaultEvalParams()
+			ep := DefaultAppParams()
 			ep.Tracer = &mock
 			TestApp(t, testCase.program, ep, testCase.evalProblems...)
 
@@ -190,12 +190,14 @@ func TestEvalPanicWithTracer(t *testing.T) { //nolint:paralleltest // Uses WithP
 			t.Run(mode.String(), func(t *testing.T) { //nolint:paralleltest // Uses WithPanicOpcode
 				testCase := getPanicTracerTestCase(mode)
 				mock := mocktracer.Tracer{}
-				ep := DefaultEvalParams()
-				ep.Tracer = &mock
 				switch mode {
 				case ModeSig:
+					ep := DefaultSigParams()
+					ep.Tracer = &mock
 					TestLogic(t, testCase.program, AssemblerMaxVersion, ep, testCase.evalProblems...)
 				case ModeApp:
+					ep := DefaultAppParams()
+					ep.Tracer = &mock
 					TestApp(t, testCase.program, ep, testCase.evalProblems...)
 				default:
 					require.Fail(t, "unknown mode")
@@ -225,7 +227,7 @@ func TestEvalWithTracerPanic(t *testing.T) {
 		t.Run(mode.String(), func(t *testing.T) {
 			t.Parallel()
 			tracer := panicTracer{}
-			ep := DefaultEvalParams()
+			ep := DefaultSigParams()
 			ep.Tracer = &tracer
 			TestLogic(t, debuggerTestProgramApprove, AssemblerMaxVersion, ep, "panicTracer panics")
 		})

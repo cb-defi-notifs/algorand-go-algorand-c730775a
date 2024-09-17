@@ -48,6 +48,7 @@ check_go_binary_version() {
 
   if [ "$expected_version" != "$actual_version" ]; then
       echo "$YELLOW_FG[WARNING]$END_FG_COLOR $binary_name version mismatch, expected $expected_version, but got $actual_version"
+      echo "Use 'install_buildtools.sh' to fix."
   fi
 }
 
@@ -72,12 +73,6 @@ check_deps() {
     if ! which shellcheck > /dev/null
     then
         missing_dep shellcheck
-    fi
-
-    # Don't print `sqlite3`s location.
-    if ! which sqlite3 > /dev/null
-    then
-        missing_dep sqlite3
     fi
 }
 

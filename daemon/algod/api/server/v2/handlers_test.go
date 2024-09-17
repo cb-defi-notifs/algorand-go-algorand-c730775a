@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2023 Algorand, Inc.
+// Copyright (C) 2019-2024 Algorand, Inc.
 // This file is part of go-algorand
 //
 // go-algorand is free software: you can redistribute it and/or modify
@@ -117,6 +117,8 @@ func makeTagGraph(rootType reflect.Type, seen map[reflect.Type]*tagNode) *tagNod
 	case reflect.Ptr:
 		// Directly embed value type graph
 		node = makeTagGraph(rootType.Elem(), seen)
+		// the node in seen for rootType should be refreshed from calculation.
+		seen[rootType] = node
 	case reflect.Struct:
 		for i := 0; i < rootType.NumField(); i++ {
 			field := rootType.Field(i)
@@ -141,8 +143,8 @@ func makeTagGraph(rootType reflect.Type, seen map[reflect.Type]*tagNode) *tagNod
 				} else {
 					tagValue = field.Name
 				}
-				if len(tagValue) != 0 {
-					// ignore any empty tags
+				if len(tagValue) != 0 && tagValue != "-" {
+					// ignore any empty tags and skipping fields
 					node.addChild(tagValue, subgraph)
 				}
 			}

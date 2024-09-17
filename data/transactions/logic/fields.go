@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2023 Algorand, Inc.
+// Copyright (C) 2019-2024 Algorand, Inc.
 // This file is part of go-algorand
 //
 // go-algorand is free software: you can redistribute it and/or modify
@@ -23,7 +23,7 @@ import (
 	"github.com/algorand/go-algorand/protocol"
 )
 
-//go:generate stringer -type=TxnField,GlobalField,AssetParamsField,AppParamsField,AcctParamsField,AssetHoldingField,OnCompletionConstType,EcdsaCurve,Base64Encoding,JSONRefType,VrfStandard,BlockField -output=fields_string.go
+//go:generate stringer -type=TxnField,GlobalField,AssetParamsField,AppParamsField,AcctParamsField,AssetHoldingField,OnCompletionConstType,EcdsaCurve,EcGroup,Base64Encoding,JSONRefType,VoterParamsField,VrfStandard,BlockField -output=fields_string.go
 
 // FieldSpec unifies the various specs for assembly, disassembly, and doc generation.
 type FieldSpec interface {
@@ -528,6 +528,31 @@ const (
 	// CallerApplicationAddress The Address of the caller app, else ZeroAddress
 	CallerApplicationAddress
 
+	// AssetCreateMinBalance is the additional minimum balance required to
+	// create an asset (which also opts an account into that asset)
+	AssetCreateMinBalance
+
+	// AssetOptInMinBalance is the additional minimum balance required to opt in to an asset
+	AssetOptInMinBalance
+
+	// GenesisHash is the genesis hash for the network
+	GenesisHash
+
+	// PayoutsEnabled is whether block proposal payouts are enabled
+	PayoutsEnabled
+
+	// PayoutsGoOnlineFee is the fee required in a keyreg transaction to make an account incentive eligible
+	PayoutsGoOnlineFee
+
+	// PayoutsPercent is the percentage of transaction fees in a block that can be paid to the block proposer.
+	PayoutsPercent
+
+	// PayoutsMinBalance is the minimum algo balance an account must have to receive block payouts (in the agreement round).
+	PayoutsMinBalance
+
+	// PayoutsMaxBalance is the maximum algo balance an account can have to receive block payouts (in the agreement round).
+	PayoutsMaxBalance
+
 	invalidGlobalField // compile-time constant for number of fields
 )
 
@@ -588,6 +613,22 @@ var globalFieldSpecs = [...]globalFieldSpec{
 		"The application ID of the application that called this application. 0 if this application is at the top-level."},
 	{CallerApplicationAddress, StackAddress, ModeApp, 6,
 		"The application address of the application that called this application. ZeroAddress if this application is at the top-level."},
+	{AssetCreateMinBalance, StackUint64, modeAny, 10,
+		"The additional minimum balance required to create (and opt-in to) an asset."},
+	{AssetOptInMinBalance, StackUint64, modeAny, 10,
+		"The additional minimum balance required to opt-in to an asset."},
+	{GenesisHash, StackBytes32, modeAny, 10, "The Genesis Hash for the network."},
+
+	{PayoutsEnabled, StackBoolean, modeAny, incentiveVersion,
+		"Whether block proposal payouts are enabled."},
+	{PayoutsGoOnlineFee, StackUint64, modeAny, incentiveVersion,
+		"The fee required in a keyreg transaction to make an account incentive eligible."},
+	{PayoutsPercent, StackUint64, modeAny, incentiveVersion,
+		"The percentage of transaction fees in a block that can be paid to the block proposer."},
+	{PayoutsMinBalance, StackUint64, modeAny, incentiveVersion,
+		"The minimum algo balance an account must have in the agreement round to receive block payouts in the proposal round."},
+	{PayoutsMaxBalance, StackUint64, modeAny, incentiveVersion,
+		"The maximum algo balance an account can have in the agreement round to receive block payouts in the proposal round."},
 }
 
 func globalFieldSpecByField(f GlobalField) (globalFieldSpec, bool) {
@@ -674,6 +715,74 @@ var EcdsaCurves = FieldGroup{
 	"ECDSA", "Curves",
 	ecdsaCurveNames[:],
 	ecdsaCurveSpecByName,
+}
+
+// EcGroup is an enum for `ec_` opcodes
+type EcGroup int
+
+const (
+	// BN254g1 is the G1 group of BN254
+	BN254g1 EcGroup = iota
+	// BN254g2 is the G2 group of BN254
+	BN254g2
+	// BLS12_381g1 specifies the G1 group of BLS 12-381
+	BLS12_381g1
+	// BLS12_381g2 specifies the G2 group of BLS 12-381
+	BLS12_381g2
+	invalidEcGroup // compile-time constant for number of fields
+)
+
+var ecGroupNames [invalidEcGroup]string
+
+type ecGroupSpec struct {
+	field EcGroup
+	doc   string
+}
+
+func (fs ecGroupSpec) Field() byte {
+	return byte(fs.field)
+}
+func (fs ecGroupSpec) Type() StackType {
+	return StackNone // Will not show, since all are untyped
+}
+func (fs ecGroupSpec) OpVersion() uint64 {
+	return pairingVersion
+}
+func (fs ecGroupSpec) Version() uint64 {
+	return pairingVersion
+}
+func (fs ecGroupSpec) Note() string {
+	return fs.doc
+}
+
+var ecGroupSpecs = [...]ecGroupSpec{
+	{BN254g1, "G1 of the BN254 curve. Points encoded as 32 byte X following by 32 byte Y"},
+	{BN254g2, "G2 of the BN254 curve. Points encoded as 64 byte X following by 64 byte Y"},
+	{BLS12_381g1, "G1 of the BLS 12-381 curve. Points encoded as 48 byte X following by 48 byte Y"},
+	{BLS12_381g2, "G2 of the BLS 12-381 curve. Points encoded as 96 byte X following by 96 byte Y"},
+}
+
+func ecGroupSpecByField(c EcGroup) (ecGroupSpec, bool) {
+	if int(c) >= len(ecGroupSpecs) {
+		return ecGroupSpec{}, false
+	}
+	return ecGroupSpecs[c], true
+}
+
+var ecGroupSpecByName = make(ecGroupNameSpecMap, len(ecGroupNames))
+
+type ecGroupNameSpecMap map[string]ecGroupSpec
+
+func (s ecGroupNameSpecMap) get(name string) (FieldSpec, bool) {
+	fs, ok := s[name]
+	return fs, ok
+}
+
+// EcGroups collects details about the constants used to describe EcGroups
+var EcGroups = FieldGroup{
+	"EC", "Groups",
+	ecGroupNames[:],
+	ecGroupSpecByName,
 }
 
 // Base64Encoding is an enum for the `base64decode` opcode
@@ -882,6 +991,23 @@ const (
 	BlkSeed BlockField = iota
 	// BlkTimestamp is the Block's timestamp, seconds from epoch
 	BlkTimestamp
+	// BlkProposer is the Block's proposer, or ZeroAddress, pre Payouts.Enabled
+	BlkProposer
+	// BlkFeesCollected is the sum of fees for the block, or 0, pre Payouts.Enabled
+	BlkFeesCollected
+	// BlkBonus is the extra amount to be paid for the given block (from FeeSink)
+	BlkBonus
+	// BlkBranch is the hash of the previous block
+	BlkBranch
+	// BlkFeeSink is the fee sink for the given round
+	BlkFeeSink
+	// BlkProtocol is the ConsensusVersion of the block.
+	BlkProtocol
+	// BlkTxnCounter is the number of the next transaction after the block
+	BlkTxnCounter
+	// BlkProposerPayout is the actual amount moved from feesink to proposer
+	BlkProposerPayout
+
 	invalidBlockField // compile-time constant for number of fields
 )
 
@@ -894,8 +1020,16 @@ type blockFieldSpec struct {
 }
 
 var blockFieldSpecs = [...]blockFieldSpec{
-	{BlkSeed, StackBytes, randomnessVersion},
+	{BlkSeed, StackBytes32, randomnessVersion},
 	{BlkTimestamp, StackUint64, randomnessVersion},
+	{BlkProposer, StackAddress, incentiveVersion},
+	{BlkFeesCollected, StackUint64, incentiveVersion},
+	{BlkBonus, StackUint64, incentiveVersion},
+	{BlkBranch, StackBytes32, incentiveVersion},
+	{BlkFeeSink, StackAddress, incentiveVersion},
+	{BlkProtocol, StackBytes, incentiveVersion},
+	{BlkTxnCounter, StackUint64, incentiveVersion},
+	{BlkProposerPayout, StackUint64, incentiveVersion},
 }
 
 func blockFieldSpecByField(r BlockField) (blockFieldSpec, bool) {
@@ -1226,6 +1360,14 @@ const (
 	// AcctTotalBoxBytes is the number of bytes in all boxes of this app account
 	AcctTotalBoxBytes
 
+	// AcctIncentiveEligible is whether this account opted into block payouts by
+	// paying extra in `keyreg`. Does not reflect eligibility based on balance.
+	AcctIncentiveEligible
+	// AcctLastProposed is the last time this account proposed. Does not include _this_ round.
+	AcctLastProposed
+	// AcctLastHeartbeat is the last heartbeat from this account.
+	AcctLastHeartbeat
+
 	// AcctTotalAppSchema - consider how to expose
 
 	invalidAcctParamsField // compile-time constant for number of fields
@@ -1270,6 +1412,10 @@ var acctParamsFieldSpecs = [...]acctParamsFieldSpec{
 	{AcctTotalAssets, StackUint64, 8, "The numbers of ASAs held by this account (including ASAs this account created)."},
 	{AcctTotalBoxes, StackUint64, boxVersion, "The number of existing boxes created by this account's app."},
 	{AcctTotalBoxBytes, StackUint64, boxVersion, "The total number of bytes used by this account's app's box keys and values."},
+
+	{AcctIncentiveEligible, StackBoolean, incentiveVersion, "Has this account opted into block payouts"},
+	{AcctLastProposed, StackUint64, incentiveVersion, "The round number of the last block this account proposed."},
+	{AcctLastHeartbeat, StackUint64, incentiveVersion, "The round number of the last block this account sent a heartbeat."},
 }
 
 func acctParamsFieldSpecByField(f AcctParamsField) (acctParamsFieldSpec, bool) {
@@ -1293,6 +1439,78 @@ var AcctParamsFields = FieldGroup{
 	"acct_params", "Fields",
 	acctParamsFieldNames[:],
 	acctParamsFieldSpecByName,
+}
+
+// VoterParamsField is an enum for `voter_params_get` opcode
+type VoterParamsField int
+
+const (
+	// VoterBalance is the balance, with pending rewards, from the balance
+	// round.  It is 0 if the account was offline then.
+	VoterBalance VoterParamsField = iota
+
+	// expose voter keys?
+
+	// VoterIncentiveEligible is whether this account opted into block payouts
+	// by paying extra in `keyreg`. Does not reflect eligibility based on
+	// balance. The value is returned for the balance round and is _false_ if
+	// the account was offline then.
+	VoterIncentiveEligible
+
+	invalidVoterParamsField // compile-time constant for number of fields
+)
+
+var voterParamsFieldNames [invalidVoterParamsField]string
+
+type voterParamsFieldSpec struct {
+	field   VoterParamsField
+	ftype   StackType
+	version uint64
+	doc     string
+}
+
+func (fs voterParamsFieldSpec) Field() byte {
+	return byte(fs.field)
+}
+func (fs voterParamsFieldSpec) Type() StackType {
+	return fs.ftype
+}
+func (fs voterParamsFieldSpec) OpVersion() uint64 {
+	return incentiveVersion
+}
+func (fs voterParamsFieldSpec) Version() uint64 {
+	return fs.version
+}
+func (fs voterParamsFieldSpec) Note() string {
+	return fs.doc
+}
+
+var voterParamsFieldSpecs = [...]voterParamsFieldSpec{
+	{VoterBalance, StackUint64, 6, "Online stake in microalgos"},
+	{VoterIncentiveEligible, StackBoolean, incentiveVersion, "Had this account opted into block payouts"},
+}
+
+func voterParamsFieldSpecByField(f VoterParamsField) (voterParamsFieldSpec, bool) {
+	if int(f) >= len(voterParamsFieldSpecs) {
+		return voterParamsFieldSpec{}, false
+	}
+	return voterParamsFieldSpecs[f], true
+}
+
+var voterParamsFieldSpecByName = make(voterNameSpecMap, len(voterParamsFieldNames))
+
+type voterNameSpecMap map[string]voterParamsFieldSpec
+
+func (s voterNameSpecMap) get(name string) (FieldSpec, bool) {
+	fs, ok := s[name]
+	return fs, ok
+}
+
+// VoterParamsFields describes voter_params_get's immediates
+var VoterParamsFields = FieldGroup{
+	"voter_params", "Fields",
+	voterParamsFieldNames[:],
+	voterParamsFieldSpecByName,
 }
 
 func init() {
@@ -1321,6 +1539,13 @@ func init() {
 		equal(int(s.field), i)
 		ecdsaCurveNames[s.field] = s.field.String()
 		ecdsaCurveSpecByName[s.field.String()] = s
+	}
+
+	equal(len(ecGroupSpecs), len(ecGroupNames))
+	for i, s := range ecGroupSpecs {
+		equal(int(s.field), i)
+		ecGroupNames[s.field] = s.field.String()
+		ecGroupSpecByName[s.field.String()] = s
 	}
 
 	equal(len(base64EncodingSpecs), len(base64EncodingNames))
@@ -1377,6 +1602,13 @@ func init() {
 		equal(int(s.field), i)
 		acctParamsFieldNames[i] = s.field.String()
 		acctParamsFieldSpecByName[s.field.String()] = s
+	}
+
+	equal(len(voterParamsFieldSpecs), len(voterParamsFieldNames))
+	for i, s := range voterParamsFieldSpecs {
+		equal(int(s.field), i)
+		voterParamsFieldNames[i] = s.field.String()
+		voterParamsFieldSpecByName[s.field.String()] = s
 	}
 
 	txnTypeMap = make(map[string]uint64)

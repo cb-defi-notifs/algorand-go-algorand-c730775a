@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2023 Algorand, Inc.
+// Copyright (C) 2019-2024 Algorand, Inc.
 // This file is part of go-algorand
 //
 // go-algorand is free software: you can redistribute it and/or modify
@@ -50,6 +50,10 @@ func NewCatchpointSQLReaderWriter(e db.Executable) *catchpointReaderWriter {
 		catchpointReader{q: e},
 		catchpointWriter{e: e},
 	}
+}
+
+func makeCatchpointReader(e db.Queryable) trackerdb.CatchpointReader {
+	return &catchpointReader{q: e}
 }
 
 func (cr *catchpointReader) GetCatchpoint(ctx context.Context, round basics.Round) (fileName string, catchpoint string, fileSize int64, err error) {

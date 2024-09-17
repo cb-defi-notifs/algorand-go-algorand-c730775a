@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2023 Algorand, Inc.
+// Copyright (C) 2019-2024 Algorand, Inc.
 // This file is part of go-algorand
 //
 // go-algorand is free software: you can redistribute it and/or modify
@@ -52,6 +52,7 @@ func TestLoadMissingConfig(t *testing.T) {
 	a := require.New(t)
 
 	templateDir, err := filepath.Abs("../test/testdata/nettemplates")
+	a.NoError(err)
 	template, err := loadTemplate(filepath.Join(templateDir, "<invalidname>.json"))
 	a.Error(err)
 	a.Equal(template.Genesis.NetworkName, "")
@@ -68,9 +69,8 @@ func TestGenerateGenesis(t *testing.T) {
 
 	targetFolder := t.TempDir()
 	networkName := "testGenGen"
-	binDir := os.ExpandEnv("${GOPATH}/bin")
 
-	err := template.generateGenesisAndWallets(targetFolder, networkName, binDir)
+	err := template.generateGenesisAndWallets(targetFolder, networkName)
 	a.NoError(err)
 	_, err = os.Stat(filepath.Join(targetFolder, config.GenesisJSONFile))
 	fileExists := err == nil
@@ -102,6 +102,68 @@ func TestValidate(t *testing.T) {
 	template, _ = loadTemplate(filepath.Join(templateDir, "TwoNodesOneRelay1000Accounts.json"))
 	err = template.Validate()
 	a.NoError(err)
+
+	templateDir, _ = filepath.Abs("../test/testdata/nettemplates")
+	template, _ = loadTemplate(filepath.Join(templateDir, "FiveNodesTwoRelays.json"))
+	err = template.Validate()
+	a.NoError(err)
+}
+
+func TestPeerListValidate(t *testing.T) {
+	partitiontest.PartitionTest(t)
+	t.Parallel()
+
+	devmodeGenesis := gen.GenesisData{
+		Wallets: []gen.WalletData{
+			{
+				Stake: 100,
+			},
+		},
+	}
+
+	t.Run("PeerList is optional", func(t *testing.T) {
+		t.Parallel()
+		tmpl := NetworkTemplate{
+			Genesis: devmodeGenesis,
+			Nodes: []remote.NodeConfigGoal{
+				{
+					IsRelay: true,
+				},
+				{
+					IsRelay: false,
+				},
+			},
+		}
+		require.NoError(t, tmpl.Validate())
+	})
+
+	t.Run("Relays cannot have PeerList", func(t *testing.T) {
+		t.Parallel()
+		tmpl := NetworkTemplate{
+			Genesis: devmodeGenesis,
+			Nodes: []remote.NodeConfigGoal{
+				{
+					IsRelay:  true,
+					PeerList: "R2",
+				},
+			},
+		}
+		require.ErrorContains(t, tmpl.Validate(), "relays may not have a peer list")
+	})
+
+	t.Run("Non-relays might have PeerList", func(t *testing.T) {
+		t.Parallel()
+		tmpl := NetworkTemplate{
+			Genesis: devmodeGenesis,
+			Nodes: []remote.NodeConfigGoal{
+				{
+					IsRelay:  false,
+					PeerList: "R2",
+				},
+			},
+		}
+		require.NoError(t, tmpl.Validate())
+	})
 }
 
 func TestDevModeValidate(t *testing.T) {

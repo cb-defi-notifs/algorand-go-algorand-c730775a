@@ -3,7 +3,7 @@
 import os
 import sys
 import algosdk.encoding as enc
-import algosdk.future.transaction as txn
+import algosdk.transaction as txn
 from goal import Goal
 
 from datetime import datetime
@@ -94,4 +94,5 @@ assert len(grp2_info["local-state-delta"]) == 1
 assert grp2_info["local-state-delta"][0]["address"] == goal.account
 assert grp2_info["local-state-delta"][0]["delta"][0]["value"]["uint"] == 70
 
+stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 print(f"{os.path.basename(sys.argv[0])} OK {stamp}")

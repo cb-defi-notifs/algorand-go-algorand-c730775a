@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2023 Algorand, Inc.
+// Copyright (C) 2019-2024 Algorand, Inc.
 // This file is part of go-algorand
 //
 // go-algorand is free software: you can redistribute it and/or modify
@@ -80,7 +80,7 @@ func TestAssetValidRounds(t *testing.T) {
 	validRounds = cparams.MaxTxnLife + 1
 	firstValid, lastValid, lastRound, err = client.ComputeValidityRounds(firstValid, lastValid, validRounds)
 	a.NoError(err)
-	a.Equal(lastRound+1, firstValid)
+	a.True(firstValid == 1 || firstValid == lastRound)
 	a.Equal(firstValid+cparams.MaxTxnLife, lastValid)
 
 	firstValid = 0
@@ -163,7 +163,7 @@ func TestAssetValidRounds(t *testing.T) {
 	// ledger may advance between SuggestedParams and FillUnsignedTxTemplate calls
 	// expect validity sequence
 	var firstValidRange, lastValidRange []uint64
-	for i := lastRoundBefore + 1; i <= lastRoundAfter+1; i++ {
+	for i := lastRoundBefore; i <= lastRoundAfter+1; i++ {
 		firstValidRange = append(firstValidRange, i)
 		lastValidRange = append(lastValidRange, i+cparams.MaxTxnLife)
 	}
@@ -774,7 +774,7 @@ func TestAssetSend(t *testing.T) {
 	tx, err = client.SendPaymentFromUnencryptedWallet(account0, extra, 0, 10000000000, nil)
 	a.NoError(err)
 	_, curRound = fixture.GetBalanceAndRound(account0)
-	fixture.WaitForConfirmedTxn(curRound+20, account0, tx.ID().String())
+	fixture.WaitForConfirmedTxn(curRound+20, tx.ID().String())
 
 	// Sending assets to account that hasn't opted in should fail, but
 	// after opting in, should succeed for non-frozen asset.

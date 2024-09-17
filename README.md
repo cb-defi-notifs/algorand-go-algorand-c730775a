@@ -22,7 +22,7 @@ the [official Go documentation website](https://golang.org/doc/).
 
 ### Linux / OSX
 
-We currently strive to support Debian-based distributions with Ubuntu 18.04
+We currently strive to support Debian-based distributions with Ubuntu 20.04
 being our official release target.
 Building on Arch Linux works as well.
 Our core engineering team uses Linux and OSX, so both environments are well
@@ -96,7 +96,7 @@ Please refer to our [CONTRIBUTING](CONTRIBUTING.md) document.
 
 ## Project Layout
 
-`go-algorand` is split into various subsystems containing varius packages.
+`go-algorand` is split into various subsystems containing various packages.
 
 ### Core
 
@@ -199,6 +199,6 @@ Provides utilities for the various components:
 
 Please see the [COPYING_FAQ](COPYING_FAQ) for details about how to apply our license.
 
-Copyright (C) 2019-2023, Algorand Inc.
+Copyright (C) 2019-2024, Algorand Inc.
 
 [developer site url]: https://developer.algorand.org/

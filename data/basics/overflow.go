@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2023 Algorand, Inc.
+// Copyright (C) 2019-2024 Algorand, Inc.
 // This file is part of go-algorand
 //
 // go-algorand is free software: you can redistribute it and/or modify
@@ -142,6 +142,14 @@ func (t *OverflowTracker) ScalarMulA(a MicroAlgos, b uint64) MicroAlgos {
 	return MicroAlgos{Raw: t.Mul(a.Raw, b)}
 }
 
+// MinA returns the smaller of 2 MicroAlgos values
+func MinA(a, b MicroAlgos) MicroAlgos {
+	if a.Raw < b.Raw {
+		return a
+	}
+	return b
+}
+
 // Muldiv computes a*b/c.  The overflow flag indicates that
 // the result was 2^64 or greater.
 func Muldiv(a uint64, b uint64, c uint64) (res uint64, overflow bool) {
@@ -151,4 +159,12 @@ func Muldiv(a uint64, b uint64, c uint64) (res uint64, overflow bool) {
 	}
 	quo, _ := bits.Div64(hi, lo, c)
 	return quo, false
+}
+
+// DivCeil provides `math.Ceil` semantics using integer division.  The technique
+// avoids slower floating point operations as suggested in https://stackoverflow.com/a/2745086.
+//
+// The method assumes both numbers are positive and does _not_ check for divide-by-zero.
+func DivCeil[T constraints.Integer](numerator, denominator T) T {
+	return (numerator + denominator - 1) / denominator
 }

@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2023 Algorand, Inc.
+// Copyright (C) 2019-2024 Algorand, Inc.
 // This file is part of go-algorand
 //
 // go-algorand is free software: you can redistribute it and/or modify
@@ -29,10 +29,8 @@ import (
 	"github.com/algorand/go-deadlock"
 
 	"github.com/algorand/go-algorand/config"
-	"github.com/algorand/go-algorand/crypto"
 	"github.com/algorand/go-algorand/data/basics"
 	"github.com/algorand/go-algorand/data/bookkeeping"
-	"github.com/algorand/go-algorand/data/transactions"
 	"github.com/algorand/go-algorand/ledger/ledgercore"
 	"github.com/algorand/go-algorand/ledger/store/trackerdb"
 	"github.com/algorand/go-algorand/logging"
@@ -95,7 +93,7 @@ const initializingAccountCachesMessageTimeout = 3 * time.Second
 // where we end up batching up to 1000 rounds in a single update.
 const accountsUpdatePerRoundHighWatermark = 1 * time.Second
 
-// forceCatchpointFileGeneration defines the CatchpointTracking mode that would be used to
+// forceCatchpointFileGenerationTrackingMode defines the CatchpointTracking mode that would be used to
 // force a node to generate catchpoint files.
 const forceCatchpointFileGenerationTrackingMode = 99
 
@@ -327,6 +325,8 @@ func (au *accountUpdates) close() {
 
 // flushCaches flushes any pending data in caches so that it is fully available during future lookups.
 func (au *accountUpdates) flushCaches() {
+	t0 := time.Now()
+	ledgerAccountsMuLockCount.Inc(nil)
 	au.accountsMu.Lock()
 
 	au.baseAccounts.flushPendingWrites()
@@ -334,10 +334,15 @@ func (au *accountUpdates) flushCaches() {
 	au.baseKVs.flushPendingWrites()
 
 	au.accountsMu.Unlock()
+	ledgerAccountsMuLockMicros.AddMicrosecondsSince(t0, nil)
 }
 
 func (au *accountUpdates) LookupResource(rnd basics.Round, addr basics.Address, aidx basics.CreatableIndex, ctype basics.CreatableType) (ledgercore.AccountResource, basics.Round, error) {
 	return au.lookupResource(rnd, addr, aidx, ctype, true /* take lock */)
+}
+
+func (au *accountUpdates) LookupAssetResources(addr basics.Address, assetIDGT basics.AssetIndex, limit uint64) ([]ledgercore.AssetResourceWithIDs, basics.Round, error) {
+	return au.lookupAssetResources(addr, assetIDGT, limit)
 }
 
 func (au *accountUpdates) LookupKv(rnd basics.Round, key string) ([]byte, error) {
@@ -675,9 +680,12 @@ func (au *accountUpdates) consecutiveVersion(offset uint64) uint64 {
 // newBlock is the accountUpdates implementation of the ledgerTracker interface. This is the "external" facing function
 // which invokes the internal implementation after taking the lock.
 func (au *accountUpdates) newBlock(blk bookkeeping.Block, delta ledgercore.StateDelta) {
+	t0 := time.Now()
+	ledgerAccountsMuLockCount.Inc(nil)
 	au.accountsMu.Lock()
 	au.newBlockImpl(blk, delta)
 	au.accountsMu.Unlock()
+	ledgerAccountsMuLockMicros.AddMicrosecondsSince(t0, nil)
 	au.accountsReadCond.Broadcast()
 }
 
@@ -686,6 +694,13 @@ func (au *accountUpdates) LatestTotals() (basics.Round, ledgercore.AccountTotals
 	au.accountsMu.RLock()
 	defer au.accountsMu.RUnlock()
 	return au.latestTotalsImpl()
+}
+
+// Totals returns the totals of all accounts for the given round
+func (au *accountUpdates) Totals(rnd basics.Round) (ledgercore.AccountTotals, error) {
+	au.accountsMu.RLock()
+	defer au.accountsMu.RUnlock()
+	return au.totalsImpl(rnd)
 }
 
 // ReadCloseSizer interface implements the standard io.Reader and io.Closer as well
@@ -711,111 +726,20 @@ func (r *readCloseSizer) Size() (int64, error) {
 
 // functions below this line are all internal functions
 
-// accountUpdatesLedgerEvaluator is a "ledger emulator" which is used *only* by initializeCaches, as a way to shortcut
-// the locks taken by the real ledger object when making requests that are being served by the accountUpdates.
-// Using this struct allow us to take the tracker lock *before* calling the loadFromDisk, and having the operation complete
-// without taking any locks. Note that it's not only the locks performance that is gained : by having the loadFrom disk
-// not requiring any external locks, we can safely take a trackers lock on the ledger during reloadLedger, which ensures
-// that even during catchpoint catchup mode switch, we're still correctly protected by a mutex.
-type accountUpdatesLedgerEvaluator struct {
-	// au is the associated accountUpdates structure which invoking the trackerEvalVerified function, passing this structure as input.
-	// the accountUpdatesLedgerEvaluator would access the underlying accountUpdates function directly, bypassing the balances mutex lock.
-	au *accountUpdates
-	// ao is onlineAccounts for voters access
-	ao *onlineAccounts
-	// txtail allows implementation of BlockHdrCached
-	tail *txTail
-	// prevHeader is the previous header to the current one. The usage of this is only in the context of initializeCaches where we iteratively
-	// building the ledgercore.StateDelta, which requires a peek on the "previous" header information.
-	prevHeader bookkeeping.BlockHeader
-}
-
-func (aul *accountUpdatesLedgerEvaluator) FlushCaches() {}
-
-// GenesisHash returns the genesis hash
-func (aul *accountUpdatesLedgerEvaluator) GenesisHash() crypto.Digest {
-	return aul.au.ledger.GenesisHash()
-}
-
-// GenesisProto returns the genesis consensus params
-func (aul *accountUpdatesLedgerEvaluator) GenesisProto() config.ConsensusParams {
-	return aul.au.ledger.GenesisProto()
-}
-
-// VotersForStateProof returns the top online accounts at round rnd.
-func (aul *accountUpdatesLedgerEvaluator) VotersForStateProof(rnd basics.Round) (voters *ledgercore.VotersForRound, err error) {
-	return aul.ao.voters.VotersForStateProof(rnd)
-}
-
-func (aul *accountUpdatesLedgerEvaluator) GetStateProofVerificationContext(_ basics.Round) (*ledgercore.StateProofVerificationContext, error) {
-	// Since state proof transaction is not being verified (we only apply the change) during replay, we don't need to implement this function at the moment.
-	return nil, fmt.Errorf("accountUpdatesLedgerEvaluator: GetStateProofVerificationContext, needed for state proof verification, is not implemented in accountUpdatesLedgerEvaluator")
-}
-
-// BlockHdr returns the header of the given round. When the evaluator is running, it's only referring to the previous header, which is what we
-// are providing here. Any attempt to access a different header would get denied.
-func (aul *accountUpdatesLedgerEvaluator) BlockHdr(r basics.Round) (bookkeeping.BlockHeader, error) {
-	if r == aul.prevHeader.Round {
-		return aul.prevHeader, nil
-	}
-	return bookkeeping.BlockHeader{}, ledgercore.ErrNoEntry{}
-}
-
-// BlockHdrCached returns the header of the given round. We use the txTail
-// tracker directly to avoid the tracker registry lock.
-func (aul *accountUpdatesLedgerEvaluator) BlockHdrCached(r basics.Round) (bookkeeping.BlockHeader, error) {
-	hdr, ok := aul.tail.blockHeader(r)
-	if !ok {
-		return bookkeeping.BlockHeader{}, fmt.Errorf("no cached header data for round %d", r)
-	}
-	return hdr, nil
-}
-
-// LatestTotals returns the totals of all accounts for the most recent round, as well as the round number
-func (aul *accountUpdatesLedgerEvaluator) LatestTotals() (basics.Round, ledgercore.AccountTotals, error) {
-	return aul.au.latestTotalsImpl()
-}
-
-// CheckDup test to see if the given transaction id/lease already exists. It's not needed by the accountUpdatesLedgerEvaluator and implemented as a stub.
-func (aul *accountUpdatesLedgerEvaluator) CheckDup(config.ConsensusParams, basics.Round, basics.Round, basics.Round, transactions.Txid, ledgercore.Txlease) error {
-	// this is a non-issue since this call will never be made on non-validating evaluation
-	return fmt.Errorf("accountUpdatesLedgerEvaluator: tried to check for dup during accountUpdates initialization ")
-}
-
-// LookupWithoutRewards returns the account balance for a given address at a given round, without the reward
-func (aul *accountUpdatesLedgerEvaluator) LookupWithoutRewards(rnd basics.Round, addr basics.Address) (ledgercore.AccountData, basics.Round, error) {
-	data, validThrough, _, _, err := aul.au.lookupWithoutRewards(rnd, addr, false /*don't sync*/)
-	if err != nil {
-		return ledgercore.AccountData{}, 0, err
-	}
-
-	return data, validThrough, err
-}
-
-func (aul *accountUpdatesLedgerEvaluator) LookupApplication(rnd basics.Round, addr basics.Address, aidx basics.AppIndex) (ledgercore.AppResource, error) {
-	r, _, err := aul.au.lookupResource(rnd, addr, basics.CreatableIndex(aidx), basics.AppCreatable, false /* don't sync */)
-	return ledgercore.AppResource{AppParams: r.AppParams, AppLocalState: r.AppLocalState}, err
-}
-
-func (aul *accountUpdatesLedgerEvaluator) LookupAsset(rnd basics.Round, addr basics.Address, aidx basics.AssetIndex) (ledgercore.AssetResource, error) {
-	r, _, err := aul.au.lookupResource(rnd, addr, basics.CreatableIndex(aidx), basics.AssetCreatable, false /* don't sync */)
-	return ledgercore.AssetResource{AssetParams: r.AssetParams, AssetHolding: r.AssetHolding}, err
-}
-
-func (aul *accountUpdatesLedgerEvaluator) LookupKv(rnd basics.Round, key string) ([]byte, error) {
-	return aul.au.lookupKv(rnd, key, false /* don't sync */)
-}
-
-// GetCreatorForRound returns the asset/app creator for a given asset/app index at a given round
-func (aul *accountUpdatesLedgerEvaluator) GetCreatorForRound(rnd basics.Round, cidx basics.CreatableIndex, ctype basics.CreatableType) (creator basics.Address, ok bool, err error) {
-	return aul.au.getCreatorForRound(rnd, cidx, ctype, false /* don't sync */)
-}
-
 // latestTotalsImpl returns the totals of all accounts for the most recent round, as well as the round number
 func (au *accountUpdates) latestTotalsImpl() (basics.Round, ledgercore.AccountTotals, error) {
 	offset := len(au.deltas)
 	rnd := au.cachedDBRound + basics.Round(len(au.deltas))
 	return rnd, au.roundTotals[offset], nil
+}
+
+// totalsImpl returns the totals of all accounts for the given round
+func (au *accountUpdates) totalsImpl(rnd basics.Round) (ledgercore.AccountTotals, error) {
+	offset, err := au.roundOffset(rnd)
+	if err != nil {
+		return ledgercore.AccountTotals{}, err
+	}
+	return au.roundTotals[offset], nil
 }
 
 // initializeFromDisk performs the atomic operation of loading the accounts data information from disk
@@ -1288,6 +1212,55 @@ func (au *accountUpdates) lookupResource(rnd basics.Round, addr basics.Address, 
 	}
 }
 
+// lookupAllResources returns all the resources for a given address, solely based on what is persisted to disk. It does not
+// take into account any in-memory deltas; the round number returned is the latest round number that is known to the database.
+func (au *accountUpdates) lookupAssetResources(addr basics.Address, assetIDGT basics.AssetIndex, limit uint64) (data []ledgercore.AssetResourceWithIDs, validThrough basics.Round, err error) {
+	// Look for resources on disk
+	persistedResources, resourceDbRound, err0 := au.accountsq.LookupLimitedResources(addr, basics.CreatableIndex(assetIDGT), limit, basics.AssetCreatable)
+	if err0 != nil {
+		return nil, basics.Round(0), err0
+	}
+
+	data = make([]ledgercore.AssetResourceWithIDs, 0, len(persistedResources))
+	for _, pd := range persistedResources {
+		ah := pd.Data.GetAssetHolding()
+
+		var arwi ledgercore.AssetResourceWithIDs
+		if !pd.Creator.IsZero() {
+			ap := pd.Data.GetAssetParams()
+
+			arwi = ledgercore.AssetResourceWithIDs{
+				AssetID: basics.AssetIndex(pd.Aidx),
+				Creator: pd.Creator,
+
+				AssetResource: ledgercore.AssetResource{
+					AssetHolding: &ah,
+					AssetParams:  &ap,
+				},
+			}
+		} else {
+			arwi = ledgercore.AssetResourceWithIDs{
+				AssetID: basics.AssetIndex(pd.Aidx),
+
+				AssetResource: ledgercore.AssetResource{
+					AssetHolding: &ah,
+				},
+			}
+		}
+
+		data = append(data, arwi)
+	}
+	// We've found all the resources we could find for this address.
+	currentDbRound := resourceDbRound
+	// The resourceDbRound will not be set if there are no persisted resources
+	if len(data) == 0 {
+		au.accountsMu.RLock()
+		currentDbRound = au.cachedDBRound
+		au.accountsMu.RUnlock()
+	}
+	return data, currentDbRound, nil
+}
+
 func (au *accountUpdates) lookupStateDelta(rnd basics.Round) (ledgercore.StateDelta, error) {
 	au.accountsMu.RLock()
 	defer au.accountsMu.RUnlock()
@@ -1510,7 +1483,11 @@ func (au *accountUpdates) roundOffset(rnd basics.Round) (offset uint64, err erro
 	return off, nil
 }
 
-func (au *accountUpdates) handleUnorderedCommitOrError(dcc *deferredCommitContext) {
+func (au *accountUpdates) handleUnorderedCommit(dcc *deferredCommitContext) {
+}
+func (au *accountUpdates) handlePrepareCommitError(dcc *deferredCommitContext) {
+}
+func (au *accountUpdates) handleCommitError(dcc *deferredCommitContext) {
 }
 
 // prepareCommit prepares data to write to the database a "chunk" of rounds, and update the cached dbRound accordingly.
@@ -1635,6 +1612,8 @@ func (au *accountUpdates) postCommit(ctx context.Context, dcc *deferredCommitCon
 		dcc.stats.MemoryUpdatesDuration = time.Duration(time.Now().UnixNano())
 	}
 
+	t0 := time.Now()
+	ledgerAccountsMuLockCount.Inc(nil)
 	au.accountsMu.Lock()
 	// Drop reference counts to modified accounts, and evict them
 	// from in-memory cache when no references remain.
@@ -1741,6 +1720,7 @@ func (au *accountUpdates) postCommit(ctx context.Context, dcc *deferredCommitCon
 	au.cachedDBRound = newBase
 
 	au.accountsMu.Unlock()
+	ledgerAccountsMuLockMicros.AddMicrosecondsSince(t0, nil)
 
 	if dcc.updateStats {
 		dcc.stats.MemoryUpdatesDuration = time.Duration(time.Now().UnixNano()) - dcc.stats.MemoryUpdatesDuration
@@ -1895,3 +1875,5 @@ var ledgerGeneratecatchpointCount = metrics.NewCounter("ledger_generatecatchpoin
 var ledgerGeneratecatchpointMicros = metrics.NewCounter("ledger_generatecatchpoint_micros", "µs spent")
 var ledgerVacuumCount = metrics.NewCounter("ledger_vacuum_count", "calls")
 var ledgerVacuumMicros = metrics.NewCounter("ledger_vacuum_micros", "µs spent")
+var ledgerAccountsMuLockCount = metrics.NewCounter("ledger_lock_accountsmu_count", "calls")
+var ledgerAccountsMuLockMicros = metrics.NewCounter("ledger_lock_accountsmu_micros", "µs spent")

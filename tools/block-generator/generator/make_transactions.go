@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2023 Algorand, Inc.
+// Copyright (C) 2019-2024 Algorand, Inc.
 // This file is part of go-algorand
 //
 // go-algorand is free software: you can redistribute it and/or modify
@@ -123,11 +123,11 @@ func (g *generator) makeAssetAcceptanceTxn(header txn.Header, index uint64) txn.
 // ---- application transactions ----
 
 func (g *generator) makeAppCreateTxn(kind appKind, sender basics.Address, round, intra uint64, futureAppId uint64) []txn.SignedTxn {
-	var approval, clear string
+	var approval, clear interface{}
 	if kind == appKindSwap {
-		approval, clear = approvalSwap, clearSwap
+		approval, clear = approvalSwapBytes, clearSwapBytes
 	} else {
-		approval, clear = approvalBoxes, clearBoxes
+		approval, clear = approvalBoxesBytes, clearBoxesBytes
 	}
 
 	createTxn := g.makeTestTxn(sender, round, intra)

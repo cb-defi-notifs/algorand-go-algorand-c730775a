@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2023 Algorand, Inc.
+// Copyright (C) 2019-2024 Algorand, Inc.
 // This file is part of go-algorand
 //
 // go-algorand is free software: you can redistribute it and/or modify
@@ -27,7 +27,7 @@ import (
 
 func TestInitConfigFile(t *testing.T) {
 	partitiontest.PartitionTest(t)
-	config, err := initializeConfigFile("../test_config.yml")
+	config, err := initializeConfigFile("test_scenario.yml")
 	require.NoError(t, err)
 	require.Equal(t, uint64(10), config.NumGenesisAccounts)
 	require.Equal(t, float32(0.25), config.AssetCloseFraction)

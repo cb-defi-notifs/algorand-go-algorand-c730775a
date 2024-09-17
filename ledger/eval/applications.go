@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2023 Algorand, Inc.
+// Copyright (C) 2019-2024 Algorand, Inc.
 // This file is part of go-algorand
 //
 // go-algorand is free software: you can redistribute it and/or modify
@@ -21,7 +21,6 @@ import (
 
 	"github.com/algorand/avm-abi/apps"
 	"github.com/algorand/go-algorand/data/basics"
-	"github.com/algorand/go-algorand/data/bookkeeping"
 	"github.com/algorand/go-algorand/data/transactions/logic"
 	"github.com/algorand/go-algorand/ledger/apply"
 	"github.com/algorand/go-algorand/ledger/ledgercore"
@@ -37,6 +36,23 @@ func (cs *roundCowState) AccountData(addr basics.Address) (ledgercore.AccountDat
 		return ledgercore.AccountData{}, err
 	}
 	return record, nil
+}
+
+func (cs *roundCowState) AgreementData(addr basics.Address) (basics.OnlineAccountData, error) {
+	record, err := cs.lookupAgreement(addr)
+	if err != nil {
+		return basics.OnlineAccountData{}, err
+	}
+	return record, nil
+}
+
+func (cs *roundCowState) OnlineStake() (basics.MicroAlgos, error) {
+	return cs.lookupParent.onlineStake()
+}
+
+// onlineStake is needed to implement roundCowParent
+func (cs *roundCowState) onlineStake() (basics.MicroAlgos, error) {
+	return cs.lookupParent.onlineStake()
 }
 
 func (cs *roundCowState) Authorizer(addr basics.Address) (basics.Address, error) {
@@ -127,10 +143,6 @@ func (cs *roundCowState) GetLocal(addr basics.Address, appIdx basics.AppIndex, k
 
 func (cs *roundCowState) SetLocal(addr basics.Address, appIdx basics.AppIndex, key string, value basics.TealValue, accountIdx uint64) error {
 	return cs.setKey(addr, appIdx, false, key, value, accountIdx)
-}
-
-func (cs *roundCowState) BlockHdrCached(round basics.Round) (bookkeeping.BlockHeader, error) {
-	return cs.blockHdrCached(round)
 }
 
 func (cs *roundCowState) DelLocal(addr basics.Address, appIdx basics.AppIndex, key string, accountIdx uint64) error {
@@ -295,8 +307,7 @@ func (cs *roundCowState) DelBox(appIdx basics.AppIndex, key string, appAddr basi
 func (cs *roundCowState) Perform(gi int, ep *logic.EvalParams) error {
 	txn := &ep.TxnGroup[gi]
 
-	// move fee to pool
-	err := cs.Move(txn.Txn.Sender, ep.Specials.FeeSink, txn.Txn.Fee, &txn.ApplyData.SenderRewards, nil)
+	err := cs.takeFee(&txn.Txn, &txn.ApplyData.SenderRewards, ep)
 	if err != nil {
 		return err
 	}

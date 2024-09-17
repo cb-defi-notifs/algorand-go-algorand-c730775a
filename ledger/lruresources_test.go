@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2023 Algorand, Inc.
+// Copyright (C) 2019-2024 Algorand, Inc.
 // This file is part of go-algorand
 //
 // go-algorand is free software: you can redistribute it and/or modify
@@ -18,6 +18,7 @@ package ledger
 
 import (
 	"encoding/binary"
+	"strings"
 	"testing"
 	"time"
 
@@ -180,8 +181,10 @@ type lruResourcesTestLogger struct {
 	warnMsgCount  int
 }
 
-func (cl *lruResourcesTestLogger) Warnf(s string, args ...interface{}) {
-	cl.warnMsgCount++
+func (cl *lruResourcesTestLogger) Infof(s string, args ...interface{}) {
+	if strings.Contains(s, "exceed the warning threshold of") {
+		cl.warnMsgCount++
+	}
 }
 
 func TestLRUResourcesPendingWritesWarning(t *testing.T) {

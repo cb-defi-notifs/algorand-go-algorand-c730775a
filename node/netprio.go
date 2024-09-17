@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2023 Algorand, Inc.
+// Copyright (C) 2019-2024 Algorand, Inc.
 // This file is part of go-algorand
 //
 // go-algorand is free software: you can redistribute it and/or modify
@@ -28,10 +28,12 @@ import (
 
 const netPrioChallengeSize = 32
 
+const netPrioChallengeSizeBase64Encoded = 44 // 32 * (4/3) rounded up to nearest multiple of 4 -> 44
+
 type netPrioResponse struct {
 	_struct struct{} `codec:",omitempty,omitemptyarray"`
 
-	Nonce string `codec:"Nonce,allocbound=netPrioChallengeSize"`
+	Nonce string `codec:"Nonce,allocbound=netPrioChallengeSizeBase64Encoded"`
 }
 
 type netPrioResponseSigned struct {

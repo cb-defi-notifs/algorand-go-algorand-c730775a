@@ -14,6 +14,7 @@ import (
 //        |-----> (*) MarshalMsg
 //        |-----> (*) CanMarshalMsg
 //        |-----> (*) UnmarshalMsg
+//        |-----> (*) UnmarshalMsgWithState
 //        |-----> (*) CanUnmarshalMsg
 //        |-----> (*) Msgsize
 //        |-----> (*) MsgIsZero
@@ -23,6 +24,7 @@ import (
 //           |-----> (*) MarshalMsg
 //           |-----> (*) CanMarshalMsg
 //           |-----> (*) UnmarshalMsg
+//           |-----> (*) UnmarshalMsgWithState
 //           |-----> (*) CanUnmarshalMsg
 //           |-----> (*) Msgsize
 //           |-----> (*) MsgIsZero
@@ -57,7 +59,12 @@ func (_ *netPrioResponse) CanMarshalMsg(z interface{}) bool {
 }
 
 // UnmarshalMsg implements msgp.Unmarshaler
-func (z *netPrioResponse) UnmarshalMsg(bts []byte) (o []byte, err error) {
+func (z *netPrioResponse) UnmarshalMsgWithState(bts []byte, st msgp.UnmarshalState) (o []byte, err error) {
+	if st.AllowableDepth == 0 {
+		err = msgp.ErrMaxDepthExceeded{}
+		return
+	}
+	st.AllowableDepth--
 	var field []byte
 	_ = field
 	var zb0001 int
@@ -77,8 +84,8 @@ func (z *netPrioResponse) UnmarshalMsg(bts []byte) (o []byte, err error) {
 				err = msgp.WrapError(err, "struct-from-array", "Nonce")
 				return
 			}
-			if zb0003 > netPrioChallengeSize {
-				err = msgp.ErrOverflow(uint64(zb0003), uint64(netPrioChallengeSize))
+			if zb0003 > netPrioChallengeSizeBase64Encoded {
+				err = msgp.ErrOverflow(uint64(zb0003), uint64(netPrioChallengeSizeBase64Encoded))
 				return
 			}
 			(*z).Nonce, bts, err = msgp.ReadStringBytes(bts)
@@ -117,8 +124,8 @@ func (z *netPrioResponse) UnmarshalMsg(bts []byte) (o []byte, err error) {
 					err = msgp.WrapError(err, "Nonce")
 					return
 				}
-				if zb0004 > netPrioChallengeSize {
-					err = msgp.ErrOverflow(uint64(zb0004), uint64(netPrioChallengeSize))
+				if zb0004 > netPrioChallengeSizeBase64Encoded {
+					err = msgp.ErrOverflow(uint64(zb0004), uint64(netPrioChallengeSizeBase64Encoded))
 					return
 				}
 				(*z).Nonce, bts, err = msgp.ReadStringBytes(bts)
@@ -139,6 +146,9 @@ func (z *netPrioResponse) UnmarshalMsg(bts []byte) (o []byte, err error) {
 	return
 }
 
+func (z *netPrioResponse) UnmarshalMsg(bts []byte) (o []byte, err error) {
+	return z.UnmarshalMsgWithState(bts, msgp.DefaultUnmarshalState)
+}
 func (_ *netPrioResponse) CanUnmarshalMsg(z interface{}) bool {
 	_, ok := (z).(*netPrioResponse)
 	return ok
@@ -157,7 +167,7 @@ func (z *netPrioResponse) MsgIsZero() bool {
 
 // MaxSize returns a maximum valid message size for this message type
 func NetPrioResponseMaxSize() (s int) {
-	s = 1 + 6 + msgp.StringPrefixSize + netPrioChallengeSize
+	s = 1 + 6 + msgp.StringPrefixSize + netPrioChallengeSizeBase64Encoded
 	return
 }
 
@@ -229,7 +239,12 @@ func (_ *netPrioResponseSigned) CanMarshalMsg(z interface{}) bool {
 }
 
 // UnmarshalMsg implements msgp.Unmarshaler
-func (z *netPrioResponseSigned) UnmarshalMsg(bts []byte) (o []byte, err error) {
+func (z *netPrioResponseSigned) UnmarshalMsgWithState(bts []byte, st msgp.UnmarshalState) (o []byte, err error) {
+	if st.AllowableDepth == 0 {
+		err = msgp.ErrMaxDepthExceeded{}
+		return
+	}
+	st.AllowableDepth--
 	var field []byte
 	_ = field
 	var zb0001 int
@@ -260,8 +275,8 @@ func (z *netPrioResponseSigned) UnmarshalMsg(bts []byte) (o []byte, err error) {
 						err = msgp.WrapError(err, "struct-from-array", "Response", "struct-from-array", "Nonce")
 						return
 					}
-					if zb0005 > netPrioChallengeSize {
-						err = msgp.ErrOverflow(uint64(zb0005), uint64(netPrioChallengeSize))
+					if zb0005 > netPrioChallengeSizeBase64Encoded {
+						err = msgp.ErrOverflow(uint64(zb0005), uint64(netPrioChallengeSizeBase64Encoded))
 						return
 					}
 					(*z).Response.Nonce, bts, err = msgp.ReadStringBytes(bts)
@@ -300,8 +315,8 @@ func (z *netPrioResponseSigned) UnmarshalMsg(bts []byte) (o []byte, err error) {
 							err = msgp.WrapError(err, "struct-from-array", "Response", "Nonce")
 							return
 						}
-						if zb0006 > netPrioChallengeSize {
-							err = msgp.ErrOverflow(uint64(zb0006), uint64(netPrioChallengeSize))
+						if zb0006 > netPrioChallengeSizeBase64Encoded {
+							err = msgp.ErrOverflow(uint64(zb0006), uint64(netPrioChallengeSizeBase64Encoded))
 							return
 						}
 						(*z).Response.Nonce, bts, err = msgp.ReadStringBytes(bts)
@@ -321,7 +336,7 @@ func (z *netPrioResponseSigned) UnmarshalMsg(bts []byte) (o []byte, err error) {
 		}
 		if zb0001 > 0 {
 			zb0001--
-			bts, err = (*z).Round.UnmarshalMsg(bts)
+			bts, err = (*z).Round.UnmarshalMsgWithState(bts, st)
 			if err != nil {
 				err = msgp.WrapError(err, "struct-from-array", "Round")
 				return
@@ -329,7 +344,7 @@ func (z *netPrioResponseSigned) UnmarshalMsg(bts []byte) (o []byte, err error) {
 		}
 		if zb0001 > 0 {
 			zb0001--
-			bts, err = (*z).Sender.UnmarshalMsg(bts)
+			bts, err = (*z).Sender.UnmarshalMsgWithState(bts, st)
 			if err != nil {
 				err = msgp.WrapError(err, "struct-from-array", "Sender")
 				return
@@ -337,7 +352,7 @@ func (z *netPrioResponseSigned) UnmarshalMsg(bts []byte) (o []byte, err error) {
 		}
 		if zb0001 > 0 {
 			zb0001--
-			bts, err = (*z).Sig.UnmarshalMsg(bts)
+			bts, err = (*z).Sig.UnmarshalMsgWithState(bts, st)
 			if err != nil {
 				err = msgp.WrapError(err, "struct-from-array", "Sig")
 				return
@@ -384,8 +399,8 @@ func (z *netPrioResponseSigned) UnmarshalMsg(bts []byte) (o []byte, err error) {
 							err = msgp.WrapError(err, "Response", "struct-from-array", "Nonce")
 							return
 						}
-						if zb0009 > netPrioChallengeSize {
-							err = msgp.ErrOverflow(uint64(zb0009), uint64(netPrioChallengeSize))
+						if zb0009 > netPrioChallengeSizeBase64Encoded {
+							err = msgp.ErrOverflow(uint64(zb0009), uint64(netPrioChallengeSizeBase64Encoded))
 							return
 						}
 						(*z).Response.Nonce, bts, err = msgp.ReadStringBytes(bts)
@@ -424,8 +439,8 @@ func (z *netPrioResponseSigned) UnmarshalMsg(bts []byte) (o []byte, err error) {
 								err = msgp.WrapError(err, "Response", "Nonce")
 								return
 							}
-							if zb0010 > netPrioChallengeSize {
-								err = msgp.ErrOverflow(uint64(zb0010), uint64(netPrioChallengeSize))
+							if zb0010 > netPrioChallengeSizeBase64Encoded {
+								err = msgp.ErrOverflow(uint64(zb0010), uint64(netPrioChallengeSizeBase64Encoded))
 								return
 							}
 							(*z).Response.Nonce, bts, err = msgp.ReadStringBytes(bts)
@@ -443,19 +458,19 @@ func (z *netPrioResponseSigned) UnmarshalMsg(bts []byte) (o []byte, err error) {
 					}
 				}
 			case "Round":
-				bts, err = (*z).Round.UnmarshalMsg(bts)
+				bts, err = (*z).Round.UnmarshalMsgWithState(bts, st)
 				if err != nil {
 					err = msgp.WrapError(err, "Round")
 					return
 				}
 			case "Sender":
-				bts, err = (*z).Sender.UnmarshalMsg(bts)
+				bts, err = (*z).Sender.UnmarshalMsgWithState(bts, st)
 				if err != nil {
 					err = msgp.WrapError(err, "Sender")
 					return
 				}
 			case "Sig":
-				bts, err = (*z).Sig.UnmarshalMsg(bts)
+				bts, err = (*z).Sig.UnmarshalMsgWithState(bts, st)
 				if err != nil {
 					err = msgp.WrapError(err, "Sig")
 					return
@@ -473,6 +488,9 @@ func (z *netPrioResponseSigned) UnmarshalMsg(bts []byte) (o []byte, err error) {
 	return
 }
 
+func (z *netPrioResponseSigned) UnmarshalMsg(bts []byte) (o []byte, err error) {
+	return z.UnmarshalMsgWithState(bts, msgp.DefaultUnmarshalState)
+}
 func (_ *netPrioResponseSigned) CanUnmarshalMsg(z interface{}) bool {
 	_, ok := (z).(*netPrioResponseSigned)
 	return ok
@@ -491,6 +509,6 @@ func (z *netPrioResponseSigned) MsgIsZero() bool {
 
 // MaxSize returns a maximum valid message size for this message type
 func NetPrioResponseSignedMaxSize() (s int) {
-	s = 1 + 9 + 1 + 6 + msgp.StringPrefixSize + netPrioChallengeSize + 6 + basics.RoundMaxSize() + 7 + basics.AddressMaxSize() + 4 + crypto.OneTimeSignatureMaxSize()
+	s = 1 + 9 + 1 + 6 + msgp.StringPrefixSize + netPrioChallengeSizeBase64Encoded + 6 + basics.RoundMaxSize() + 7 + basics.AddressMaxSize() + 4 + crypto.OneTimeSignatureMaxSize()
 	return
 }

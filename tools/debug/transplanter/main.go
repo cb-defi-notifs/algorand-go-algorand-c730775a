@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2023 Algorand, Inc.
+// Copyright (C) 2019-2024 Algorand, Inc.
 // This file is part of go-algorand
 //
 // go-algorand is free software: you can redistribute it and/or modify
@@ -381,7 +381,6 @@ func main() {
 		l.Close()
 
 		fmt.Printf("Catching up from %d to %d\n", latest, *roundStart)
-
 		followerNode, err = node.MakeFollower(log, rootPath, cfg, []string{}, genesis)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Cannot init follower node: %v", err)
@@ -394,7 +393,11 @@ func main() {
 			os.Exit(1)
 		}
 
-		followerNode.Start()
+		err = followerNode.Start()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Cannot start follower node: %v", err)
+			os.Exit(1)
+		}
 
 		for followerNode.Ledger().Latest() < basics.Round(*roundStart) {
 			fmt.Printf("At round %d, waiting for %d\n", followerNode.Ledger().Latest(), *roundStart)
@@ -422,7 +425,7 @@ func main() {
 	txCount := 0
 	totalTxCount := 0
 	blockCount := 0
-	pool := pools.MakeTransactionPool(l, cfg, log)
+	pool := pools.MakeTransactionPool(l, cfg, log, nil)
 	hdr, err := l.BlockHdr(l.Latest())
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Cannot get latest block header: %v", err)
@@ -456,13 +459,15 @@ func main() {
 
 		if txCount >= *blockSize {
 			deadline := time.Now().Add(100 * time.Millisecond)
-			vb, err := pool.AssembleBlock(nextRound, deadline)
+			ab, err := pool.AssembleBlock(nextRound, deadline)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "ERR: Cannot assemble block %d: %v\n", nextRound, err)
 				break
 			}
+			// make validated block without calling FinishBlock
+			vb := ledgercore.MakeValidatedBlock(ab.UnfinishedBlock(), ab.UnfinishedDeltas())
 
-			err = l.AddValidatedBlock(*vb, agreement.Certificate{})
+			err = l.AddValidatedBlock(vb, agreement.Certificate{})
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "ERR: Cannot add block %d: %v\n", nextRound, err)
 				break
